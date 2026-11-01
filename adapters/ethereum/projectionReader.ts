@@ -45,7 +45,7 @@ export class EthereumProjectionReader {
   }
 
   async supportsSettlement(): Promise<boolean> {
-    return this.#supports('0xf4a7d71b');
+    return this.#supports('0xdfdd14e8');
   }
 
   async registerId(): Promise<Bytes32> {

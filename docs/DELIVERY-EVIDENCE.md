@@ -6,6 +6,18 @@ gate. Documentation rows identify documentation only.
 
 Run `npm run verify` to reproduce.
 
+> **2026-11-01 — interface identifier change.** `IProjectionSettlement` now
+> declares `verifier()`, which moved its ERC-165 identifier from `0xf4a7d71b`
+> to `0xdfdd14e8`. `IRegisterProjection` is unchanged at `0x6309e170`. An
+> optional `IRegistryReferencePolicy` was added at `0x42ae525a`; it is separate
+> from the frozen pair and does not affect either identifier. `GapStatus`
+> dropped its `SUPERSEDED` member and the `SettlementSuperseded` event was
+> removed, since a token holds at most one open gap and there is no
+> supersession path.
+>
+> The rows below record the runs as they were made and keep the values those
+> runs observed. They are not restated here.
+
 ## Stage 0 — Foundation
 
 | Requirement | Implementation | Test | Status |
