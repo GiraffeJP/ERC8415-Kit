@@ -456,3 +456,45 @@ test('a settlement record keeps its outcome after the gap closes', () => {
   // An unknown settlement reads as NONE rather than reverting.
   assert.equal(h.store.settlement(commitment(0xff)).status, 'NONE');
 });
+
+// The registry-reference policy mirrors `canonicalRegistryReference()` on the
+// deployed register. It exists because a collateral or escrow contract has to
+// enforce one reference per live asset and cannot tell, on its own, whether the
+// reference it indexes is meaningful.
+test('a zero registry reference is admitted when no policy is in force', () => {
+  const h = harness();
+  admit(h, TOKEN, entry({
+    version: 1n, holder: ALICE, effectiveAt: 100n,
+    recordCommitment: commitment(1), registryReference: ZERO_BYTES32,
+  }));
+  assert.equal(h.store.entryAt(TOKEN, 1n).registryReference, ZERO_BYTES32);
+});
+
+test('a zero registry reference is refused under a canonical-reference policy', () => {
+  const h = harness(true);
+
+  assert.throws(() => admit(h, TOKEN, entry({
+    version: 1n, holder: ALICE, effectiveAt: 100n,
+    recordCommitment: commitment(1), registryReference: ZERO_BYTES32,
+  })), (error: unknown) => {
+    assert.ok(error instanceof ProjectionError);
+    assert.equal(error.code, 'REGISTRY_REFERENCE_INVALID');
+    return true;
+  });
+  assert.equal(h.store.entryCount(TOKEN), 0, 'a refused entry was still written');
+
+  // A nonzero reference is admitted, and the guarantee holds for later entries.
+  admit(h, TOKEN, entry({
+    version: 1n, holder: ALICE, effectiveAt: 100n, recordCommitment: commitment(1),
+  }));
+  assert.throws(() => admit(h, TOKEN, entry({
+    version: 2n, holder: BOB, effectiveAt: 130n,
+    recordCommitment: commitment(2), previousCommitment: commitment(1),
+    registryReference: ZERO_BYTES32,
+  })), (error: unknown) => {
+    assert.ok(error instanceof ProjectionError);
+    assert.equal(error.code, 'REGISTRY_REFERENCE_INVALID');
+    return true;
+  });
+  assert.equal(h.store.entryCount(TOKEN), 1);
+});
