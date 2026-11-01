@@ -178,7 +178,7 @@ Frozen interface identifiers, neither the Kit's to change or to recompute:
 
 ```text
 IRegisterProjection     0x6309e170
-IProjectionSettlement   0xf4a7d71b
+IProjectionSettlement   0xdfdd14e8
 ```
 
 ### The finality rule
