@@ -87,7 +87,7 @@ describe("ERC-8415 settlement on chain", function () {
     const settlementAddress = ethers.getCreateAddress({ from: deployer.address, nonce: settlementNonce + 1 });
 
     const projectionFactory = await ethers.getContractFactory("RegisterProjection", deployer);
-    projection = await projectionFactory.deploy(REGISTER_ID, settlementAddress);
+    projection = await projectionFactory.deploy(REGISTER_ID, settlementAddress, false);
     await projection.waitForDeployment();
 
     const settlementFactory = await ethers.getContractFactory("ProjectionSettlement", deployer);
@@ -125,7 +125,7 @@ describe("ERC-8415 settlement on chain", function () {
   });
 
   it("advertises the frozen settlement identifier from the deployed code", async () => {
-    assert.equal(await settlement.supportsInterface("0xf4a7d71b"), true);
+    assert.equal(await settlement.supportsInterface("0xdfdd14e8"), true);
     assert.equal(await settlement.supportsInterface("0x01ffc9a7"), true);
     // Projection conformance belongs to the register, not to settlement.
     assert.equal(await settlement.supportsInterface("0x6309e170"), false);
@@ -182,9 +182,11 @@ describe("ERC-8415 settlement on chain", function () {
   });
 
   it("allows one open gap per token and one record per identifier", async () => {
-    await openGap(gapId(1));
+    const { deadline: firstDeadline } = await openGap(gapId(1));
+    const opened = (await settlement.settlement(gapId(1))).openedAt;
     const deadline = (await now()) + 3600n;
 
+    // There is no supersession: a second gap does not replace the first.
     await assert.rejects(
       settlement.connect(registrar).beginSettlement(TOKEN, gapId(2), bob.address, snapshot(2), deadline),
       /GapAlreadyOpen/
@@ -193,6 +195,69 @@ describe("ERC-8415 settlement on chain", function () {
       settlement.connect(registrar).beginSettlement(9n, gapId(1), bob.address, snapshot(2), deadline),
       /SettlementExists/
     );
+
+    // The refused attempt left the original gap exactly as it was. Were it
+    // superseded instead, openedAt would move forward and an interval in which
+    // a gap was genuinely open would stop reading as contested.
+    const after = await settlement.settlement(gapId(1));
+    assert.equal(after.openedAt, opened, "openedAt moved");
+    assert.equal(after.deadline, firstDeadline);
+    assert.equal(after.status, 1n, "the original gap stopped being OPEN");
+    assert.equal(await settlement.openGapOf(TOKEN), gapId(1));
+    assert.equal((await settlement.settlement(gapId(2))).status, 0n, "a record was written for the refused gap");
+  });
+
+  it("holds openedAt fixed for the life of an open gap", async () => {
+    await openGap(gapId(1));
+    const opened = (await settlement.settlement(gapId(1))).openedAt;
+
+    // Time passes and further attempts are made; none of it moves openedAt,
+    // because the only ways out of an open gap are admission, cancellation and
+    // expiry.
+    for (let i = 0; i < 3; i += 1) {
+      await assert.rejects(
+        settlement
+          .connect(registrar)
+          .beginSettlement(TOKEN, gapId(10 + i), bob.address, snapshot(2), (await now()) + 3600n),
+        /GapAlreadyOpen/
+      );
+      await ethers.provider.send("evm_mine", []);
+      assert.equal((await settlement.settlement(gapId(1))).openedAt, opened);
+    }
+
+    // Admission closes it, and still does not rewrite when it was opened.
+    const proof = await attest(gapId(1), commitment(2), reference(2), SECOND_AT);
+    await (
+      await settlement.connect(relayer).finalizeSettlement(gapId(1), commitment(2), reference(2), SECOND_AT, proof)
+    ).wait();
+
+    const closed = await settlement.settlement(gapId(1));
+    assert.equal(closed.status, 2n, "status is not ADMITTED");
+    assert.equal(closed.openedAt, opened, "admission rewrote openedAt");
+  });
+
+  it("lets a fresh settlement begin after cancellation, with its own openedAt", async () => {
+    const { deadline } = await openGap(gapId(1));
+    const firstOpened = (await settlement.settlement(gapId(1))).openedAt;
+
+    await advanceTo(deadline + 1n);
+    await (await settlement.connect(registrar).cancelSettlement(gapId(1), ethers.ZeroHash)).wait();
+    assert.equal(await settlement.openGapOf(TOKEN), ethers.ZeroHash);
+
+    // The token is free again, and the new gap is a new record rather than a
+    // continuation of the cancelled one.
+    await advanceTo(deadline + 600n);
+    await openGap(gapId(2));
+    const second = await settlement.settlement(gapId(2));
+
+    assert.equal(second.status, 1n, "the new gap is not OPEN");
+    assert.ok(second.openedAt > firstOpened, "the new gap reused the cancelled gap's openedAt");
+    assert.equal(await settlement.openGapOf(TOKEN), gapId(2));
+
+    // The cancelled record keeps its own history untouched.
+    const first = await settlement.settlement(gapId(1));
+    assert.equal(first.status, 3n, "the cancelled gap did not stay CANCELLED");
+    assert.equal(first.openedAt, firstOpened);
   });
 
   it("closes a gap by admitting the entry, and the register records it", async () => {
@@ -468,7 +533,7 @@ describe("ERC-8415 settlement on chain", function () {
 
   it("does not let settlement reach a register it is not the authority of", async () => {
     const otherFactory = await ethers.getContractFactory("RegisterProjection", deployer);
-    const foreign = await otherFactory.deploy(REGISTER_ID, deployer.address);
+    const foreign = await otherFactory.deploy(REGISTER_ID, deployer.address, false);
     await foreign.waitForDeployment();
 
     const settlementFactory = await ethers.getContractFactory("ProjectionSettlement", deployer);

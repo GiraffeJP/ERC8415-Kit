@@ -48,11 +48,15 @@ interface IRegisterAdmission {
 ///   event: an admission whose proof does not verify never becomes an entry,
 ///   and one that does is permanent.
 ///
-/// `GapStatus.SUPERSEDED` and `SettlementSuperseded` are declared by the
-/// interface and never produced here. A token holds at most one open gap, and
-/// replacing an open gap with another would be a second way to close one
-/// without either admitting or cancelling. The in-process engine has no such
-/// path either; the member stays for interface conformance.
+/// A token holds at most one open gap, and there is no supersession. While a
+/// gap is open, `beginSettlement` reverts with `GapAlreadyOpen`: the open gap
+/// ends only by admission, cancellation or expiry.
+///
+/// Superseding would hand a settlement authority two things it should not
+/// have. It could withhold admission indefinitely by replacing its own gap
+/// whenever one neared its deadline, and each replacement would carry a new
+/// `openedAt`, so an interval in which a gap was genuinely open would stop
+/// reading as contested.
 contract ProjectionSettlement is IProjectionSettlement {
     error NotSettlementAuthority();
     error SettlementExists();

@@ -89,14 +89,32 @@ test('the deadline is bounded by the settlement period', () => {
 
 test('a token has at most one open gap, and an id is never reused', () => {
   const s = scene();
-  begin(s);
+  const first = begin(s);
+
+  // There is no supersession: a second gap is refused rather than replacing
+  // the first, so a settlement authority cannot withhold admission by opening
+  // a fresh gap whenever the current one nears its deadline.
   rejects('GAP_ALREADY_OPEN', () => begin(s, { settlementId: commitment(0x5e78) }));
   rejects('SETTLEMENT_EXISTS', () => begin(s, { settlementId: SETTLEMENT }));
+
+  // The refused attempts leave openedAt where it was. Were the gap superseded,
+  // it would move forward and an interval in which a gap was genuinely open
+  // would stop reading as contested.
+  s.clock.advance(600n);
+  rejects('GAP_ALREADY_OPEN', () => begin(s, { settlementId: commitment(0x5e79) }));
+  assert.equal(s.engine.settlement(SETTLEMENT).openedAt, first.openedAt);
+  assert.equal(s.engine.settlement(SETTLEMENT).status, 'OPEN');
+  assert.equal(s.engine.openGapOf(TOKEN), SETTLEMENT);
 
   s.clock.advance(3_601n);
   s.engine.cancel(SETTLEMENT, ALICE);
   // The identifier stays spent after the gap closes.
   rejects('SETTLEMENT_EXISTS', () => begin(s, { settlementId: SETTLEMENT }));
+
+  // A fresh settlement may begin, and carries its own openedAt.
+  const second = begin(s, { settlementId: commitment(0x5e7a) });
+  assert.ok(second.openedAt > first.openedAt);
+  assert.equal(s.engine.settlement(SETTLEMENT).status, 'CANCELLED');
 });
 
 test('admission closes the gap and records the outcome', () => {
