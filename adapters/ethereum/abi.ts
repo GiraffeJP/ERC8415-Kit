@@ -18,6 +18,10 @@ export const SELECTOR = {
   verificationProfile: '0x43396e0a',
   settlementPeriod: '0x0f1071be',
   isSettlementAuthority: '0xdb966382',
+  // Equal to the IRegistryReferencePolicy identifier, because the interface
+  // declares exactly one function and an ERC-165 id is the XOR of its
+  // selectors.
+  canonicalRegistryReference: '0x42ae525a',
   supportsInterface: '0x01ffc9a7',
 } as const;
 

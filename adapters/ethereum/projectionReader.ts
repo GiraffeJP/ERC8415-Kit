@@ -48,6 +48,30 @@ export class EthereumProjectionReader {
     return this.#supports('0xdfdd14e8');
   }
 
+  /**
+   * Whether the register advertises `IRegistryReferencePolicy`.
+   *
+   * Optional, so a register that does not advertise it is still conforming.
+   * It simply makes no promise about `registryReference`.
+   */
+  async supportsReferencePolicy(): Promise<boolean> {
+    return this.#supports('0x42ae525a');
+  }
+
+  /**
+   * Whether every entry here is guaranteed to carry a nonzero
+   * `registryReference`.
+   *
+   * `false` when the interface is not advertised, rather than a throw: a
+   * register that makes no promise and one that promises nothing are the same
+   * answer to the question a collateral contract is asking, and that contract
+   * must treat the reference as possibly zero either way.
+   */
+  async canonicalRegistryReference(): Promise<boolean> {
+    if (!(await this.supportsReferencePolicy())) return false;
+    return toBool(await this.#slot(SELECTOR.canonicalRegistryReference, []));
+  }
+
   async registerId(): Promise<Bytes32> {
     return toBytes32(await this.#slot(SELECTOR.registerId, []));
   }

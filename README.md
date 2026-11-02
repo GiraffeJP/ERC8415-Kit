@@ -157,6 +157,18 @@ A register advertising it and answering `canonicalRegistryReference() == true`
 guarantees every entry carries a nonzero `registryReference`. Canonical form
 beyond "nonzero" is profile-defined and the interface does not specify it.
 
+An instrument discovers the policy from the settlement contract it already
+holds: call `projection()` on it to get the register address, call
+`supportsInterface(0x42ae525a)` on that address, and read
+`canonicalRegistryReference()` only if it answers true. `projection()` is this
+component's accessor, not part of either frozen interface, so a deployment that
+composes the surfaces differently has to expose the register address its own
+way. The property belongs to the register, so the settlement contract does not
+advertise it on its own behalf. A register that does not advertise the interface gives no guarantee at
+all, which is the same position as one that advertises it and answers false:
+the instrument must treat every `registryReference` as possibly zero and index
+accordingly.
+
 This does not move the one-reference-per-live-asset rule onto the register.
 Collateral and escrow contracts still maintain their own index of one registry
 reference per live asset; the flag only tells them whether the reference they

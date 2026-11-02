@@ -24,6 +24,16 @@ pragma solidity ^0.8.20;
 /// This does not move the one-reference-per-live-asset rule onto the register.
 /// Collateral and escrow contracts still keep their own index; this only tells
 /// them whether the thing they are indexing is worth indexing.
+///
+/// Discovery runs from the settlement contract an instrument already holds:
+/// call `projection()` on it for the register address, call
+/// `supportsInterface(0x42ae525a)` on that address, and read
+/// `canonicalRegistryReference()` only if it answers true. The property is the
+/// register's, so a settlement contract does not advertise this interface on
+/// the register's behalf. A register that does not advertise it gives no
+/// guarantee at all, which is the same position as one that advertises it and
+/// answers false: the instrument must treat every `registryReference` as
+/// possibly zero and index accordingly.
 interface IRegistryReferencePolicy {
     /// @notice True when every entry in this register is guaranteed to carry a
     /// nonzero `registryReference`, fixed for the life of the deployment.
