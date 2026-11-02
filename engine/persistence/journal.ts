@@ -43,6 +43,15 @@ export interface JournalIdentity {
   readonly chainId?: string;
   /** The projection contract the adapter reads, when it names one. */
   readonly contract?: string;
+  /**
+   * Whether the store guarantees a nonzero registryReference on every entry.
+   *
+   * Optional because a header written before this field existed does not carry
+   * it. Absent is read as `false`, which is what such a store was: it made no
+   * guarantee. A journal written under one setting therefore cannot be
+   * replayed under the other.
+   */
+  readonly canonicalRegistryReference?: boolean;
 }
 
 export class JournalIdentityMismatchError extends Error {
@@ -126,6 +135,11 @@ export class FileJournal implements Journal {
    * headerless file with content was written by something else, and replaying
    * it would present its entries as records of a projection nothing ever bound
    * them to — which is the whole reason the header exists.
+   *
+   * The registry-reference policy is part of that identity. Entries admitted
+   * under one setting were not checked the way the other setting checks them,
+   * so a journal written under one is refused by a store configured for the
+   * other rather than replayed into it.
    */
   bind(identity: JournalIdentity): void {
     const { records, identity: stored } = this.read();
@@ -134,6 +148,20 @@ export class FileJournal implements Journal {
         if (stored[field] !== identity[field]) {
           throw new JournalIdentityMismatchError(field, stored[field], identity[field]);
         }
+      }
+      // Compared separately because it is a boolean with a meaningful default:
+      // a header written before the field existed is a store that made no
+      // guarantee, which is `false`. Without this the mismatch would surface
+      // as REGISTRY_REFERENCE_INVALID partway through replay instead of as a
+      // refusal to open.
+      const storedPolicy = stored.canonicalRegistryReference ?? false;
+      const suppliedPolicy = identity.canonicalRegistryReference ?? false;
+      if (storedPolicy !== suppliedPolicy) {
+        throw new JournalIdentityMismatchError(
+          'canonicalRegistryReference',
+          String(storedPolicy),
+          String(suppliedPolicy),
+        );
       }
       return;
     }

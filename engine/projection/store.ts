@@ -75,6 +75,7 @@ export class ProjectionStore {
       verificationProfile: options.verificationProfile,
       chainId: options.adapter.chainId.toString(),
       contract: options.adapter.contract,
+      canonicalRegistryReference: this.#canonicalRegistryReference,
     });
   }
 
