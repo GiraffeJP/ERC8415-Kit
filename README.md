@@ -52,7 +52,7 @@ To run only the record-date consumer example after installing dependencies:
 npm run test:onchain -- tests/onchain/recordDateClaim.onchain.cjs
 ```
 
-The three tests deploy the components to Hardhat's in-process EVM and exercise real local transactions. They are the quickest way to see the read-then-act pattern below.
+The four tests deploy the components to Hardhat's in-process EVM and exercise real local transactions. They are the quickest way to see the read-then-act pattern below.
 
 ## Example: a record-date payment
 
@@ -70,6 +70,7 @@ The [executable walkthrough](tests/onchain/recordDateClaim.onchain.cjs) uses eff
 
 - An initial entry names Alice at `1000`; the record date `1500` is covered but provisional.
 - A confirming entry naming Alice again, effective at `2000`, makes `1500` final. Alice can claim once while no gap is open; Bob cannot.
+- A later entry naming Bob does not change Alice's already-final record-date answer.
 - An entry effective exactly at `1500` does **not** make `1500` final.
 - If a gap opens earlier in the same block as the claim, the claim sees it and refuses, even though historical finality remains true.
 
@@ -190,7 +191,7 @@ The tests cover historical query boundaries, same-holder confirming entries, pro
 
 ### Public testnet evidence
 
-A wallet campaign of 60 scoped cases and a same-block release and admission ordering campaign were run on the public Hoodi testnet (chain ID 560048) against an earlier revision. Their result report and receipt index were kept in the original repository and are not yet restored here. Until they are, treat these results as unrecorded in this repository. Assets and register inputs were synthetic.
+[Integration test results](docs/testing/TEST-RESULTS-2026-10-19.md) record a wallet campaign of 60 scoped cases, all with recorded PASS results in their stated execution scopes, plus a same-block release and admission ordering campaign on the public Hoodi testnet (chain ID 560048). A [machine-readable receipt index](docs/testing/hoodi-receipts.json) lists the transactions. Assets and register inputs were synthetic; transaction execution and receipts are public-chain facts. These results are separate from the Kit suite counts above and are version-pinned evidence, not a certification of every normative requirement.
 
 ## Documentation and contributions
 
