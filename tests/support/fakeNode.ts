@@ -9,6 +9,14 @@ export interface FakeState {
   readonly supports: readonly string[];
   readonly finalized: { number: bigint; stateRoot: string };
   readonly applicationRoot?: string;
+  /**
+   * What `canonicalRegistryReference()` answers, for a register that advertises
+   * the policy. Omitted means the register makes no promise, so a node whose
+   * `supports` list carries the policy identifier while this is unset reverts
+   * the call: that is a register advertising an interface it has not
+   * implemented, and the adapter must not read a value out of it.
+   */
+  readonly canonicalRegistryReference?: boolean;
 }
 
 const encodeEntry = (entry: ProjectionEntry): string =>
@@ -68,6 +76,13 @@ export class FakeNode implements JsonRpcTransport {
         return `0x${word(BigInt(entries.length))}`;
       case SELECTOR.openGapOf:
         return `0x${word(this.#state.openGap)}`;
+      case SELECTOR.canonicalRegistryReference: {
+        const guaranteed = this.#state.canonicalRegistryReference;
+        if (guaranteed === undefined) {
+          throw new JsonRpcError(3, 'execution reverted: no registry reference policy');
+        }
+        return bool(guaranteed);
+      }
       case SELECTOR.supportsInterface: {
         const id = `0x${args.slice(0, 8)}`;
         return bool(this.#state.supports.includes(id));

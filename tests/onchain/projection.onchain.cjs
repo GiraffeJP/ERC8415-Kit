@@ -24,7 +24,7 @@ describe("ERC-8415 projection on chain", function () {
   beforeEach(async () => {
     [authority, alice, bob, outsider] = await ethers.getSigners();
     const factory = await ethers.getContractFactory("RegisterProjection", authority);
-    projection = await factory.deploy(REGISTER_ID, authority.address);
+    projection = await factory.deploy(REGISTER_ID, authority.address, false);
     await projection.waitForDeployment();
     deploymentReceipt = await projection.deploymentTransaction().wait();
   });
@@ -46,7 +46,61 @@ describe("ERC-8415 projection on chain", function () {
     assert.equal(await projection.supportsInterface("0x6309e170"), true);
     assert.equal(await projection.supportsInterface("0x01ffc9a7"), true);
     // Settlement conformance is not claimed by this contract.
-    assert.equal(await projection.supportsInterface("0xf4a7d71b"), false);
+    assert.equal(await projection.supportsInterface("0xdfdd14e8"), false);
+  });
+
+  it("advertises the registry-reference policy interface", async () => {
+    // Optional and separate from the frozen pair: a register answering it does
+    // not move either frozen identifier.
+    assert.equal(await projection.supportsInterface("0x42ae525a"), true);
+
+    const ids = await (await ethers.getContractFactory("InterfaceIds", authority)).deploy();
+    await ids.waitForDeployment();
+    assert.equal(await ids.registryReferencePolicyId(), "0x42ae525a");
+    // Computed by the compiler, so this cannot drift from the interface.
+    assert.equal(await ids.registerProjectionId(), "0x6309e170");
+    assert.equal(await ids.projectionSettlementId(), "0xdfdd14e8");
+  });
+
+  it("allows a zero registry reference when the policy is off", async () => {
+    // The default deployment makes no promise, so a profile that leaves the
+    // reference empty is still admitted.
+    assert.equal(await projection.canonicalRegistryReference(), false);
+
+    await (await projection.initialize(1n, commitment(1), ethers.ZeroHash, alice.address, 1000n)).wait();
+    assert.equal((await projection.currentEntry(1n)).registryReference, ethers.ZeroHash);
+
+    await (
+      await projection.admit(1n, commitment(2), commitment(1), ethers.ZeroHash, bob.address, 2000n)
+    ).wait();
+    assert.equal(await projection.entryCount(1n), 2n);
+  });
+
+  it("rejects a zero registry reference when the policy is on", async () => {
+    const strict = await (await ethers.getContractFactory("RegisterProjection", authority))
+      .deploy(REGISTER_ID, authority.address, true);
+    await strict.waitForDeployment();
+    assert.equal(await strict.canonicalRegistryReference(), true);
+
+    // Initialization is covered, so a register cannot start with a key an
+    // instrument would index as meaningful when it is not.
+    await assert.rejects(
+      strict.initialize(1n, commitment(1), ethers.ZeroHash, alice.address, 1000n),
+      /RegistryReferenceInvalid/
+    );
+    assert.equal(await strict.entryCount(1n), 0n, "a refused initialization still wrote an entry");
+
+    await (await strict.initialize(1n, commitment(1), reference(1), alice.address, 1000n)).wait();
+
+    // And so is admission, so the guarantee holds for every later entry too.
+    await assert.rejects(
+      strict.admit(1n, commitment(2), commitment(1), ethers.ZeroHash, bob.address, 2000n),
+      /RegistryReferenceInvalid/
+    );
+    assert.equal(await strict.entryCount(1n), 1n, "a refused admission still wrote an entry");
+
+    await (await strict.admit(1n, commitment(2), commitment(1), reference(2), bob.address, 2000n)).wait();
+    assert.equal(await strict.entryCount(1n), 2n);
   });
 
   it("submits an initialization transaction and emits RegisterInitialized", async () => {

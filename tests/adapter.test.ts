@@ -55,6 +55,7 @@ test('the hardcoded selectors match the compiled ABI', () => {
   for (const [file, name] of [
     ['IRegisterProjection.sol', 'IRegisterProjection'],
     ['IProjectionSettlement.sol', 'IProjectionSettlement'],
+    ['IRegistryReferencePolicy.sol', 'IRegistryReferencePolicy'],
   ] as const) {
     for (const item of abiOf(output, file, name) as { type: string; name?: string; inputs?: { type: string }[] }[]) {
       if (item.type !== 'function' || item.name === undefined) continue;
@@ -79,6 +80,35 @@ test('conformance is discovered, never assumed', async () => {
 
   transport.set({ supports: [] });
   assert.equal(await r.supportsProjection(), false);
+});
+
+test('the registry-reference policy is discovered the same way', async () => {
+  // Three registers, all conforming. The policy is optional, so the question
+  // the adapter answers is what an instrument may index, not whether the
+  // contract is valid.
+  const guarantees = node();
+  guarantees.set({ supports: ['0x6309e170', '0x42ae525a'], canonicalRegistryReference: true });
+  const promises = reader(guarantees);
+  assert.equal(await promises.supportsReferencePolicy(), true);
+  assert.equal(await promises.canonicalRegistryReference(), true);
+
+  const declines = node();
+  declines.set({ supports: ['0x6309e170', '0x42ae525a'], canonicalRegistryReference: false });
+  const advertised = reader(declines);
+  assert.equal(await advertised.supportsReferencePolicy(), true);
+  assert.equal(await advertised.canonicalRegistryReference(), false);
+
+  // A register that never advertises it gives the same answer as one that
+  // advertises false, because the instrument must index the same way either
+  // way. It is not an error, and the value is not read.
+  const silent = node();
+  const quiet = reader(silent);
+  assert.equal(await quiet.supportsReferencePolicy(), false);
+  assert.equal(await quiet.canonicalRegistryReference(), false);
+  const asked = silent.calls.filter(
+    (call) => ((call.params as [{ data: string }])[0]).data.startsWith(SELECTOR.canonicalRegistryReference),
+  );
+  assert.deepEqual(asked, [], 'the adapter read a value the register never promised');
 });
 
 test('the reader decodes every projection accessor', async () => {

@@ -44,7 +44,8 @@ export interface Harness {
   height: bigint;
 }
 
-export const harness = (): Harness => {
+/** `canonicalRegistryReference` mirrors the deployed register's flag; off by default. */
+export const harness = (canonicalRegistryReference = false): Harness => {
   const profiles = new ProofProfileRegistry();
   profiles.register(openProfile, commitment(0x0be7));
   profiles.register(closedProfile, commitment(0xc105));
@@ -54,6 +55,7 @@ export const harness = (): Harness => {
     verificationProfile: commitment(0x0be7),
     profiles,
     adapter,
+    canonicalRegistryReference,
   });
   return { store, profiles, adapter, height: 0n };
 };

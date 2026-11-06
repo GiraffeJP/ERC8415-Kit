@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC165} from "./IERC165.sol";
 import {IRegisterProjection} from "./IRegisterProjection.sol";
+import {IRegistryReferencePolicy} from "./IRegistryReferencePolicy.sol";
 
 /// @title A conforming ERC-8415 register projection.
 /// @notice Implements the four projection invariants and the finality rule, so
@@ -36,7 +37,7 @@ import {IRegisterProjection} from "./IRegisterProjection.sol";
 /// `ProjectionSettlement` in this repository is that contract. It implements
 /// `IProjectionSettlement`, holds the source authority, and verifies a bound
 /// proof before every write it makes - the register's first entry included.
-contract RegisterProjection is IRegisterProjection {
+contract RegisterProjection is IRegisterProjection, IRegistryReferencePolicy {
     error NotSourceAuthority();
     error RegisterIdInvalid();
     error EntryUnknown();
@@ -48,20 +49,28 @@ contract RegisterProjection is IRegisterProjection {
     error CommitmentInvalid();
     error HolderInvalid();
     error AlreadyInitialized();
+    error RegistryReferenceInvalid();
 
     bytes32 private immutable _registerId;
     address private immutable _sourceAuthority;
+    /// Fixed at construction. See `canonicalRegistryReference()`.
+    bool private immutable _canonicalRegistryReference;
 
     mapping(uint256 => RegisterEntry[]) private _entries;
     /// Per token, never global: cross-token replay is a registrar or
     /// application concern and would need state the standard does not assume.
     mapping(uint256 => mapping(bytes32 => bool)) private _commitmentSeen;
 
-    constructor(bytes32 registerIdentifier, address sourceAuthority) {
+    constructor(
+        bytes32 registerIdentifier,
+        address sourceAuthority,
+        bool canonicalReference
+    ) {
         if (registerIdentifier == bytes32(0)) revert RegisterIdInvalid();
         if (sourceAuthority == address(0)) revert NotSourceAuthority();
         _registerId = registerIdentifier;
         _sourceAuthority = sourceAuthority;
+        _canonicalRegistryReference = canonicalReference;
     }
 
     modifier onlySourceAuthority() {
@@ -71,7 +80,24 @@ contract RegisterProjection is IRegisterProjection {
 
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         return interfaceId == type(IERC165).interfaceId
-            || interfaceId == type(IRegisterProjection).interfaceId;
+            || interfaceId == type(IRegisterProjection).interfaceId
+            || interfaceId == type(IRegistryReferencePolicy).interfaceId;
+    }
+
+    /// @notice Whether every entry here is guaranteed to carry a nonzero
+    /// `registryReference`. Fixed at construction and never changes.
+    ///
+    /// When true, `initialize` and `admit` both reject a zero reference, so an
+    /// instrument indexing one asset per reference has a key it can trust.
+    /// Canonical form beyond "nonzero" is profile-defined: this contract does
+    /// not canonicalise, compare namespaces or decide that two spellings mean
+    /// the same asset.
+    ///
+    /// It does not take the one-reference-per-live-asset rule on itself.
+    /// Collateral and escrow contracts keep their own index; this only tells
+    /// them whether what they index is meaningful.
+    function canonicalRegistryReference() external view returns (bool) {
+        return _canonicalRegistryReference;
     }
 
     function registerId() external view returns (bytes32) {
@@ -94,6 +120,9 @@ contract RegisterProjection is IRegisterProjection {
         if (_entries[tokenId].length != 0) revert AlreadyInitialized();
         if (recordCommitment == bytes32(0)) revert CommitmentInvalid();
         if (holder == address(0)) revert HolderInvalid();
+        if (_canonicalRegistryReference && registryReference == bytes32(0)) {
+            revert RegistryReferenceInvalid();
+        }
 
         _entries[tokenId].push(
             RegisterEntry({
@@ -129,6 +158,9 @@ contract RegisterProjection is IRegisterProjection {
         if (list.length == 0) revert EntryUnknown();
         if (recordCommitment == bytes32(0)) revert CommitmentInvalid();
         if (holder == address(0)) revert HolderInvalid();
+        if (_canonicalRegistryReference && registryReference == bytes32(0)) {
+            revert RegistryReferenceInvalid();
+        }
 
         RegisterEntry storage previous = list[list.length - 1];
         if (previousCommitment != previous.recordCommitment) revert CommitmentLinkBroken();

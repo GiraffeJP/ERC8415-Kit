@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {IERC165} from "./IERC165.sol";
 
 interface IProjectionSettlement is IERC165 {
-    enum GapStatus { NONE, OPEN, ADMITTED, CANCELLED, SUPERSEDED }
+    enum GapStatus { NONE, OPEN, ADMITTED, CANCELLED }
 
     struct Settlement {
         uint256 tokenId;
@@ -19,7 +19,6 @@ interface IProjectionSettlement is IERC165 {
     event SettlementStarted(bytes32 indexed settlementId, uint256 indexed tokenId, address indexed initiator, address expectedHolder, bytes32 snapshotHash, uint64 deadline);
     event SettlementFinalized(bytes32 indexed settlementId, uint256 indexed tokenId, bytes32 indexed recordCommitment, uint64 version, uint64 effectiveAt);
     event SettlementCancelled(bytes32 indexed settlementId, uint256 indexed tokenId, bytes32 indexed reasonHash);
-    event SettlementSuperseded(bytes32 indexed supersededId, bytes32 indexed replacementId, uint256 indexed tokenId);
 
     function settlement(bytes32 settlementId)
         external view returns (Settlement memory record);
@@ -32,6 +31,18 @@ interface IProjectionSettlement is IERC165 {
 
     function verificationProfile()
         external view returns (bytes32 identifier);
+
+    /// @notice The verifier the profile named by `verificationProfile()` is
+    /// checked through.
+    ///
+    /// `verificationProfile()` cannot change, but on its own it does not say
+    /// what code decides an admission. This does. In this implementation the
+    /// address is immutable, so a consumer can inspect its code on chain once
+    /// and rely on it. A deployment that puts an upgradeable verifier here
+    /// MUST expose that verifier's upgrade authority, because the profile
+    /// identifier will not move when the code behind it does.
+    function verifier()
+        external view returns (address verifierAddress);
 
     function isSettlementAuthority(uint256 tokenId, address account)
         external view returns (bool authorized);

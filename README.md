@@ -134,9 +134,46 @@ The repository is source-distributed (`private: true` in `package.json`); the qu
 The draft defines two discoverable surfaces:
 
 ```text
-IRegisterProjection     0x6309e170
-IProjectionSettlement   0xf4a7d71b
+IRegisterProjection       0x6309e170
+IProjectionSettlement     0xdfdd14e8
 ```
+
+`IProjectionSettlement` now declares `verifier()`, which moved its identifier
+from the previously recorded `0xf4a7d71b`. `verificationProfile()` names the
+profile but not the code deciding an admission; `verifier()` names that code.
+In `ProjectionSettlement` the address is immutable, so a consumer can inspect
+it on chain once. A deployment that puts an upgradeable verifier there must
+expose that verifier's upgrade authority, since the profile identifier does not
+move when the code behind it does.
+
+One optional interface sits beside the pair, and answering it does not affect
+either identifier above:
+
+```text
+IRegistryReferencePolicy  0x42ae525a
+```
+
+A register advertising it and answering `canonicalRegistryReference() == true`
+guarantees every entry carries a nonzero `registryReference`. Canonical form
+beyond "nonzero" is profile-defined and the interface does not specify it.
+
+An instrument discovers the policy from the settlement contract it already
+holds: call `projection()` on it to get the register address, call
+`supportsInterface(0x42ae525a)` on that address, and read
+`canonicalRegistryReference()` only if it answers true. `projection()` is this
+component's accessor, not part of either frozen interface, so a deployment that
+composes the surfaces differently has to expose the register address its own
+way. The property belongs to the register, so the settlement contract does not
+advertise it on its own behalf. A register that does not advertise the interface gives no guarantee at
+all, which is the same position as one that advertises it and answers false:
+the instrument must treat every `registryReference` as possibly zero and index
+accordingly.
+
+This does not move the one-reference-per-live-asset rule onto the register.
+Collateral and escrow contracts still maintain their own index of one registry
+reference per live asset; the flag only tells them whether the reference they
+are indexing is meaningful, rather than a zero that would silently collapse
+every such asset onto one key.
 
 The Kit supplies separate components:
 

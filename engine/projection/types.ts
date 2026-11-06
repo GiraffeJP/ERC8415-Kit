@@ -34,7 +34,7 @@ export interface ProjectionEntry {
 export type CandidateEntry = Omit<ProjectionEntry, 'supersededAt'>;
 
 /** A settlement gap. Mirrors `IProjectionSettlement.Settlement`. */
-export type GapStatus = 'NONE' | 'OPEN' | 'ADMITTED' | 'CANCELLED' | 'SUPERSEDED';
+export type GapStatus = 'NONE' | 'OPEN' | 'ADMITTED' | 'CANCELLED';
 
 export interface Settlement {
   readonly settlementId: Bytes32;

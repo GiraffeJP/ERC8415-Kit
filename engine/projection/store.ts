@@ -24,6 +24,12 @@ export interface StoreOptions {
    * before.
    */
   readonly journal?: Journal;
+  /**
+   * Mirrors `canonicalRegistryReference()` on the deployed register. When
+   * true, no entry may carry a zero registryReference. Defaults to false, so
+   * a store built without it behaves exactly as before.
+   */
+  readonly canonicalRegistryReference?: boolean;
 }
 
 /**
@@ -41,6 +47,7 @@ export class ProjectionStore {
   readonly #options: StoreOptions;
   readonly #profile: ProofProfile;
   readonly #journal: Journal;
+  readonly #canonicalRegistryReference: boolean;
   /**
    * Set when a mutation could not be journaled. The mutation itself is undone,
    * so no reader sees an entry the disk does not hold - but a failed append
@@ -57,6 +64,7 @@ export class ProjectionStore {
     this.#options = Object.freeze({ ...options });
     this.#profile = profile;
     this.#journal = options.journal ?? nullJournal;
+    this.#canonicalRegistryReference = options.canonicalRegistryReference ?? false;
     // Bind the journal to this projection before it is read or written.
     // Replay does not re-verify proofs, by design, so a journal that belongs
     // to a different register, verification profile or chain has to be
@@ -67,6 +75,7 @@ export class ProjectionStore {
       verificationProfile: options.verificationProfile,
       chainId: options.adapter.chainId.toString(),
       contract: options.adapter.contract,
+      canonicalRegistryReference: this.#canonicalRegistryReference,
     });
   }
 
@@ -288,7 +297,7 @@ export class ProjectionStore {
     // can put all of it back. The three mutations are one admission and have
     // to fail as one.
     const existing = this.#projections.get(key(tokenId));
-    const target = existing ?? new TokenProjection();
+    const target = existing ?? new TokenProjection(this.#canonicalRegistryReference);
     const priorHeight = adapter.acceptedHeight(tokenId);
     const openGap = openId === undefined ? undefined : this.settlement(openId);
 
@@ -347,7 +356,7 @@ export class ProjectionStore {
     remoteHeight: bigint,
     settlementId: Bytes32 | null,
   ): ProjectionEntry {
-    const target = this.#projections.get(key(tokenId)) ?? new TokenProjection();
+    const target = this.#projections.get(key(tokenId)) ?? new TokenProjection(this.#canonicalRegistryReference);
     const entry = target.admit(candidate);
     this.#projections.set(key(tokenId), target);
     this.#options.adapter.advanceHeight(tokenId, remoteHeight);

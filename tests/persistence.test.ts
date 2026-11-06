@@ -445,3 +445,108 @@ test('a cancellation that cannot be journaled leaves the gap open', () => {
   assert.equal(store.openGapOf(TOKEN), commitment(0x99));
   assert.equal(store.settlement(commitment(0x99)).status, 'OPEN');
 });
+
+/** A store over `path`, with the registry-reference policy set either way. */
+const durableWithPolicy = (path: string, canonicalRegistryReference: boolean) => {
+  const base = harness(canonicalRegistryReference);
+  const store = new ProjectionStore({
+    registerId: base.store.registerId,
+    verificationProfile: base.store.verificationProfile,
+    profiles: base.profiles,
+    adapter: base.adapter,
+    journal: new FileJournal(path),
+    canonicalRegistryReference,
+  });
+  return { ...base, store };
+};
+
+/** Reopen `path` into a store with the policy set either way. */
+const reopenWithPolicy = (
+  path: string,
+  base: ReturnType<typeof harness>,
+  canonicalRegistryReference: boolean,
+) =>
+  restoreProjectionStore({
+    registerId: base.store.registerId,
+    verificationProfile: base.store.verificationProfile,
+    profiles: base.profiles,
+    adapter: base.adapter,
+    journal: new FileJournal(path),
+    canonicalRegistryReference,
+  });
+
+const assertPolicyMismatch = (run: () => unknown, stored: string, supplied: string) => {
+  assert.throws(run, (error: unknown) => {
+    assert.ok(error instanceof JournalIdentityMismatchError, String(error));
+    assert.equal(error.field, 'canonicalRegistryReference');
+    assert.equal(error.stored, stored);
+    assert.equal(error.supplied, supplied);
+    return true;
+  });
+};
+
+test('a journal written under the reference policy is refused by a store without it', () => {
+  const path = scratch();
+  const h = durableWithPolicy(path, true);
+  admit(h, TOKEN, entry({ version: 1n, holder: ALICE, effectiveAt: 100n, recordCommitment: commitment(1) }));
+
+  // The entries were admitted under a guarantee the reopening store does not
+  // hold, so they are not its records to present. Refusing on open beats
+  // discovering it partway through replay.
+  assertPolicyMismatch(() => reopenWithPolicy(path, h, false), 'true', 'false');
+});
+
+test('a journal written without the reference policy is refused by a store holding it', () => {
+  const path = scratch();
+  const h = durableWithPolicy(path, false);
+  admit(h, TOKEN, entry({ version: 1n, holder: ALICE, effectiveAt: 100n, recordCommitment: commitment(1) }));
+
+  // The other direction matters more: these entries were never checked for a
+  // zero reference, so replaying them into a store that promises none would
+  // make the promise false. Without the binding this surfaced as
+  // REGISTRY_REFERENCE_INVALID mid-replay, if it surfaced at all.
+  assertPolicyMismatch(() => reopenWithPolicy(path, h, true), 'false', 'true');
+});
+
+test('a header written before the policy existed loads without it and is refused with it', () => {
+  const path = scratch();
+  const h = durableWithPolicy(path, false);
+  admit(h, TOKEN, entry({ version: 1n, holder: ALICE, effectiveAt: 100n, recordCommitment: commitment(1) }));
+
+  // Strip the field, leaving the header exactly as an older build wrote it.
+  const legacy = readFileSync(path, 'utf8')
+    .split('\n')
+    .map((line) => {
+      if (!line.startsWith('{"kind":"header"')) return line;
+      const parsed = JSON.parse(line) as { identity: Record<string, unknown> };
+      delete parsed.identity['canonicalRegistryReference'];
+      return JSON.stringify(parsed);
+    })
+    .join('\n');
+  writeFileSync(path, legacy);
+  assert.equal(headerLine(path).includes('canonicalRegistryReference'), false);
+
+  // Absent reads as false, which is what such a store was.
+  const restored = reopenWithPolicy(path, h, false);
+  assert.equal(restored.applied, 1);
+  assert.equal(restored.store.entryCount(TOKEN), 1);
+
+  assertPolicyMismatch(() => reopenWithPolicy(path, h, true), 'false', 'true');
+});
+
+test('a journal replays into a store whose reference policy matches', () => {
+  for (const policy of [false, true]) {
+    const path = scratch();
+    const h = durableWithPolicy(path, policy);
+    admit(h, TOKEN, entry({ version: 1n, holder: ALICE, effectiveAt: 100n, recordCommitment: commitment(1) }));
+    admit(h, TOKEN, entry({
+      version: 2n, holder: BOB, effectiveAt: 130n,
+      recordCommitment: commitment(2), previousCommitment: commitment(1),
+    }));
+
+    const restored = reopenWithPolicy(path, h, policy);
+    assert.equal(restored.applied, 2);
+    assert.equal(restored.store.entryCount(TOKEN), 2);
+    assert.equal(restored.store.holderAsOf(TOKEN, 130n), BOB);
+  }
+});

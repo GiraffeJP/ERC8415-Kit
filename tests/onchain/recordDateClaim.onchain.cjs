@@ -59,7 +59,7 @@ describe("ERC-8415 consumer example: record-date claim", function () {
 
     const nonce = await ethers.provider.getTransactionCount(deployer.address);
     const settlementAddress = ethers.getCreateAddress({ from: deployer.address, nonce: nonce + 1 });
-    projection = await (await ethers.getContractFactory("RegisterProjection", deployer)).deploy(REGISTER_ID, settlementAddress);
+    projection = await (await ethers.getContractFactory("RegisterProjection", deployer)).deploy(REGISTER_ID, settlementAddress, false);
     await projection.waitForDeployment();
     settlement = await (await ethers.getContractFactory("ProjectionSettlement", deployer)).deploy(
       await projection.getAddress(), await verifier.getAddress(), SETTLEMENT_PERIOD, [registrar.address]

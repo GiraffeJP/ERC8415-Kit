@@ -57,9 +57,14 @@ test('IRegisterProjection computes to the frozen 0x6309e170', () => {
   assert.equal(interfaceId(abi), '0x6309e170');
 });
 
-test('IProjectionSettlement computes to the frozen 0xf4a7d71b', () => {
+test('IProjectionSettlement computes to 0xdfdd14e8', () => {
   const abi = abiOf(output, 'IProjectionSettlement.sol', 'IProjectionSettlement');
-  assert.equal(interfaceId(abi), '0xf4a7d71b');
+  assert.equal(interfaceId(abi), '0xdfdd14e8');
+});
+
+test('IRegistryReferencePolicy computes to 0x42ae525a', () => {
+  const abi = abiOf(output, 'IRegistryReferencePolicy.sol', 'IRegistryReferencePolicy');
+  assert.equal(interfaceId(abi), '0x42ae525a');
 });
 
 test('the projection interface declares exactly the seven accessors', () => {

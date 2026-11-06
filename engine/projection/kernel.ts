@@ -25,6 +25,18 @@ import { ProjectionError, reject } from './errors.ts';
  * earlier instants with nothing written back.
  */
 export class TokenProjection {
+  /**
+   * Mirrors `canonicalRegistryReference()` on the deployed register. When
+   * true, no entry may carry a zero registryReference, so an instrument
+   * indexing one asset per reference has a key it can trust. Canonical form
+   * beyond "nonzero" is profile-defined and not decided here.
+   */
+  readonly #canonicalRegistryReference: boolean;
+
+  constructor(canonicalRegistryReference = false) {
+    this.#canonicalRegistryReference = canonicalRegistryReference;
+  }
+
   #entries: ProjectionEntry[] = [];
   readonly #commitments = new Set<Commitment>();
   readonly #byVersion = new Map<string, number>();
@@ -59,7 +71,7 @@ export class TokenProjection {
    * that entry moves.
    */
   admit(candidate: CandidateEntry): ProjectionEntry {
-    validateCandidateShape(candidate);
+    validateCandidateShape(candidate, this.#canonicalRegistryReference);
     const previous = this.#entries.at(-1);
 
     if (previous === undefined) {
@@ -183,7 +195,10 @@ export class TokenProjection {
 }
 
 /** Validate fields before any proof profile or caller dereferences them. */
-export const validateCandidateShape = (candidate: CandidateEntry): void => {
+export const validateCandidateShape = (
+  candidate: CandidateEntry,
+  canonicalRegistryReference = false,
+): void => {
   const bad = (why: string): never => reject('MALFORMED_ENTRY', why);
 
   if (typeof candidate !== 'object' || candidate === null) bad('entry must be an object');
@@ -197,6 +212,9 @@ export const validateCandidateShape = (candidate: CandidateEntry): void => {
   if (candidate.recordCommitment === ZERO_BYTES32) bad('recordCommitment is zero');
   if (candidate.recordCommitment === candidate.previousCommitment) {
     bad('recordCommitment repeats previousCommitment');
+  }
+  if (canonicalRegistryReference && candidate.registryReference === ZERO_BYTES32) {
+    reject('REGISTRY_REFERENCE_INVALID', 'registryReference is zero under a canonical-reference policy');
   }
 };
 

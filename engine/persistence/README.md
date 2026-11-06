@@ -64,6 +64,16 @@ same append the first write used. A journal that has been tampered with — a
 reordered record, a broken commitment link — therefore fails to replay rather
 than loading quietly.
 
+What is checked up front, before a single record is applied, is the identity
+header: the register, the verification profile, the chain and contract the
+adapter names, and whether the store guarantees a nonzero registry reference.
+A mismatch on any of them raises `JournalIdentityMismatchError` on open. The
+reference policy is in that set because entries admitted without the guarantee
+were never checked the way a store holding it checks them; catching that at
+open is better than failing partway through replay. A header written before
+the field existed does not carry it, and absent reads as `false` — which is
+what such a store was.
+
 ## Format
 
 Newline-delimited JSON. Every `uint64` is a decimal string, never a JSON
