@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.18 is where Node runs TypeScript from source without a flag, which
+        # is what lets this project ship with no build step. 24 guards against
+        # drift on the current line.
+        node-version: [22, 24]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Runs the suite under coverage and fails below 80% on lines, branches
+      # or functions, so the acceptance target is a gate rather than a number
+      # someone reads off a report.
+      - name: Test with coverage
+        run: npm run coverage
+
+      # The solc binary is fetched from an external host the first time it is
+      # needed. That download is the one part of this job that can fail for
+      # reasons unrelated to the code - it has already cost a run with an
+      # ECONNRESET - so keep it between runs.
+      - name: Cache the Solidity compiler
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: solc-${{ runner.os }}-${{ hashFiles('hardhat.config.cjs') }}
+          restore-keys: solc-${{ runner.os }}-
+
+      # Deploys the projection and settlement contracts to an in-process EVM,
+      # submits real transactions against them and verifies the events they
+      # emit. Separate from the step above because it is the only part of the
+      # suite that needs a chain.
+      - name: On-chain delivery
+        run: npm run test:onchain
